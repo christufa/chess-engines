@@ -1,0 +1,55 @@
+# Tests on every PR (the required "Tests" check): lint, the API against a fake engine, and
+# the same tests against the real, pinned Stockfish release (mate-in-one, multipv
+# ordering, determinism, queueing). Also checks that docs/openapi.json is current and that
+# the Helm chart renders.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate workflows
+        run: |
+          curl --fail --location --silent --show-error https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes=
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.1"
+          python-version: "3.13"
+
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check src tests scripts
+
+      - name: Fetch the pinned Stockfish (checksum verified)
+        run: sh engines/stockfish/fetch.sh "$RUNNER_TEMP/stockfish"
+
+      - name: Tests, including against real Stockfish
+        env:
+          STOCKFISH_PATH: ${{ runner.temp }}/stockfish/stockfish
+          CHESS_ENGINES_REQUIRE_STOCKFISH: "1" # fail, not skip, if the engine is missing
+        run: uv run --frozen pytest -q
+
+      - name: Render the Helm chart
+        run: |
+          helm lint chart/chess-engines --set image=example.azurecr.io/chess-engines@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          helm template t chart/chess-engines --namespace chess-engines \
+            --set image=example.azurecr.io/chess-engines@sha256:0000000000000000000000000000000000000000000000000000000000000000 > /dev/null

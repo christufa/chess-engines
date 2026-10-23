@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default-deny ingress for the namespace; the API's pods admit only the namespaces in
+# networkPolicy.allowFrom, plus KEDA polling /v1/load. kubectl port-forward isn't subject
+# to policy.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: default-deny-ingress
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+spec:
+  endpointSelector: {}
+  ingress:
+    - {} # an empty rule selects no peers: deny all ingress
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-ingress
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels: {{- include "chess-engines.selector" . | nindent 6 }}
+  ingress:
+    - fromEndpoints:
+        {{- range .Values.networkPolicy.allowFrom }}
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: {{ .namespace }}
+            {{- range $k, $v := .podLabels }}
+            {{ $k }}: {{ $v | quote }}
+            {{- end }}
+        {{- end }}
+        {{- if .Values.autoscaling.enabled }}
+        # The KEDA operator (AKS add-on) polling GET /v1/load.
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            app: keda-operator
+        {{- end }}
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+    # Kubelet probes.
+    - fromEntities: [host]
+      toPorts:
+        - ports:
+            - { port: "8000", protocol: TCP }
+{{- end }}

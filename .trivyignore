@@ -1,0 +1,2 @@
+# Vulnerabilities accepted after review: one ID per line, with a reason and a recheck date, e.g.
+# CVE-2099-0001  # not reachable from the API; recheck 2027-01-01

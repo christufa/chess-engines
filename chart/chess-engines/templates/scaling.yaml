@@ -1,0 +1,34 @@
+{{- if .Values.autoscaling.enabled }}
+{{- $a := .Values.autoscaling }}
+{{- if lt (int $a.minReplicas) 1 }}
+{{- fail "autoscaling.minReplicas must be at least 1: the metrics-api trigger polls a running pod" }}
+{{- end }}
+# KEDA (the AKS add-on) polls GET /v1/load through the Service and scales on the reported
+# utilization. metricType Value: the number is a per-pod ratio, so the HPA multiplies the
+# current replicas by utilization / target.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ .Release.Name }}
+  minReplicaCount: {{ $a.minReplicas }}
+  maxReplicaCount: {{ $a.maxReplicas }}
+  pollingInterval: {{ $a.pollingInterval }}
+  cooldownPeriod: {{ $a.cooldownPeriod }}
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: {{ $a.cooldownPeriod }}
+  triggers:
+    - type: metrics-api
+      metricType: Value
+      metadata:
+        url: http://{{ .Release.Name }}.{{ .Release.Namespace }}.svc.cluster.local/v1/load
+        format: json
+        valueLocation: utilization
+        targetValue: {{ $a.targetUtilization | quote }}
+{{- end }}

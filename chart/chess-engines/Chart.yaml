@@ -1,0 +1,6 @@
+apiVersion: v2
+name: chess-engines
+description: Shared chess-engine analysis API (UCI engines over HTTP), scaled by KEDA
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

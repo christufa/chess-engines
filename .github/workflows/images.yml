@@ -1,0 +1,140 @@
+# Publish the image from main. Pull requests build, test and scan it in containers.yml
+# (the required "containers" check); this workflow does it again on main and then:
+#   build → smoke test (real Stockfish) → Trivy (fail on fixable criticals) → push to the
+#   openings cluster's ACR with SBOM and SLSA provenance → cosign keyless signature,
+#   verified against this workflow's main identity → digest committed to the deploy-state
+#   branch (chess-engines.yaml), which the chess-engines ApplicationSet in
+#   christufa/chess-openings-researcher reads, so Argo CD rolls the new build out.
+#
+# Azure sign-in uses GitHub OIDC: Azure trusts only this repository's main branch (a
+# federated credential on the openings CI identity, which can do nothing but AcrPush). No
+# passwords or keys. Repository secrets hold only identifiers, kept as secrets so they are
+# masked in this public repository's logs: AZURE_CLIENT_ID, AZURE_TENANT_ID and
+# ACR_LOGIN_SERVER (the openings compute stack's ci_client_id and acr_login_server).
+name: images
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-main
+  cancel-in-progress: false # never abandon a half-published release
+
+jobs:
+  image:
+    name: chess-engines
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04 # pinned: ubuntu-latest moves; bump deliberately
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      id-token: write # Azure OIDC sign-in and cosign keyless signing
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      IMAGE: chess-engines:ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: CODE_VERSION=${{ github.sha }}
+          tags: ${{ env.IMAGE }}
+          load: true
+          cache-from: type=gha,scope=chess-engines
+          cache-to: type=gha,scope=chess-engines,mode=max
+
+      - name: Smoke test
+        run: .github/scripts/smoke.sh "$IMAGE"
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: trivy.json
+          exit-code: "0"
+          trivyignores: .trivyignore
+
+      - name: Fail on fixable critical vulnerabilities
+        run: python3 .github/scripts/trivy_report.py trivy.json chess-engines
+
+      - name: Azure sign-in (GitHub OIDC)
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: .github/scripts/azure_oidc_login.sh
+
+      - name: Registry sign-in
+        env:
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+        run: az acr login --name "${ACR_LOGIN_SERVER%%.*}"
+
+      - name: Push with SBOM and provenance
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          build-args: CODE_VERSION=${{ github.sha }}
+          tags: |
+            ${{ secrets.ACR_LOGIN_SERVER }}/chess-engines:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/chess-engines:main
+          push: true
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha,scope=chess-engines
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign and verify (cosign keyless, identity = this workflow on main)
+        env:
+          REF: ${{ secrets.ACR_LOGIN_SERVER }}/chess-engines@${{ steps.push.outputs.digest }}
+          IDENTITY: ${{ github.server_url }}/${{ github.repository }}/.github/workflows/images.yml@refs/heads/main
+        run: |
+          cosign sign --yes "$REF"
+          cosign verify "$REF" --certificate-identity "$IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+
+      - name: Summary
+        run: |
+          {
+            echo "### chess-engines"
+            echo "- tags: \`${{ github.sha }}\`, \`main\`"
+            echo "- digest: \`${{ steps.push.outputs.digest }}\`"
+            echo "- signed by: \`images.yml@refs/heads/main\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Commit the digest to deploy-state so Argo CD rolls it out. Its own job so only checkout
+  # runs with write access. deploy-state is not main, so main's ruleset still holds, and
+  # GITHUB_TOKEN pushes don't start workflows.
+  release:
+    name: release to deploy-state
+    needs: image
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # push to deploy-state
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # history, to refuse moving deploy-state back to an older commit
+          filter: blob:none
+      - name: Commit the digest to deploy-state
+        env:
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: .github/scripts/release_state.sh

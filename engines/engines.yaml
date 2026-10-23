@@ -1,0 +1,23 @@
+# The engine registry baked into the image (/etc/chess-engines/engines.yaml). The Helm
+# chart replaces it with its `engines` value, so a deployment can retune workers and limits.
+#
+# Adding a UCI engine: a binary layer in docker/Dockerfile (pinned release, checksum
+# verified, like engines/stockfish/fetch.sh) and an entry here.
+default_engine: stockfish
+engines:
+  - name: stockfish
+    path: /opt/engines/stockfish/stockfish
+    version: "19"            # engines/stockfish/fetch.sh pins the release
+    workers: 2               # engine processes per pod
+    options:
+      Threads: 1             # one core per process: deterministic at a fixed depth
+      Hash: 64               # MiB per process
+    limits:
+      default_depth: 18
+      max_depth: 30
+      max_movetime_ms: 10000
+      max_multipv: 10
+      max_queue: 16
+      queue_timeout_s: 30
+      max_search_s: 30
+      hang_grace_s: 10

@@ -1,0 +1,44 @@
+# Digest-pinned image, e.g. <registry>/chess-engines@sha256:... (required).
+image: ""
+
+# Engine registry (engines.yaml) to use instead of the one baked into the image, e.g. to
+# change workers or limits. null keeps the image's (engines/engines.yaml).
+engines: null
+
+# Engine processes are CPU-bound: one core each at Threads=1. The image's registry runs
+# 2 processes per pod; the request is one core, so a pod can burst to two on an idle node.
+resources:
+  requests: { cpu: "1", memory: 512Mi }
+  limits: { memory: 1Gi }
+
+# Where the pods run: the openings cluster's spot pool (scales from zero, evictable).
+nodeSelector:
+  workload: batch
+tolerations:
+  - key: kubernetes.azure.com/scalesetpriority
+    operator: Equal
+    value: spot
+    effect: NoSchedule
+
+# KEDA ScaledObject on request load: GET /v1/load returns (searching + queued) / engine
+# processes for the pod the Service picks, and replicas grow while it stays above target.
+# The metrics-api scaler needs a pod to poll, so the minimum is 1 (scale-to-zero would
+# need the KEDA HTTP add-on in front of the Service). Without KEDA, replicas = minReplicas.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetUtilization: "1"   # every engine busy; above this a queue is forming
+  pollingInterval: 15
+  cooldownPeriod: 300
+
+# Ingress is denied except from these (CiliumNetworkPolicy). Each entry: a namespace, and
+# optionally pod labels within it.
+networkPolicy:
+  enabled: true
+  allowFrom: []
+  # - namespace: openings-research
+  # - namespace: cloudflared
+  #   podLabels: { app.kubernetes.io/name: cloudflared }
+
+logLevel: INFO

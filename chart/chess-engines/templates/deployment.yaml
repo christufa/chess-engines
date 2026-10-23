@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.autoscaling.minReplicas }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: {{- include "chess-engines.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "chess-engines.labels" . | nindent 8 }}
+      {{- if .Values.engines }}
+      annotations:
+        checksum/engines: {{ toYaml .Values.engines | sha256sum }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      # Uvicorn finishes in-flight searches on SIGTERM; the longest is max_search_s + grace.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: api
+          image: {{ include "chess-engines.image" . }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: LOG_LEVEL, value: {{ .Values.logLevel | quote }} }
+            - { name: ACCESS_LOG, value: "0" }
+          ports:
+            - { name: http, containerPort: 8000 }
+          startupProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            {{- if .Values.engines }}
+            - { name: engines, mountPath: /etc/chess-engines, readOnly: true }
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 64Mi }
+        {{- if .Values.engines }}
+        - name: engines
+          configMap: { name: {{ .Release.Name }}-engines }
+        {{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "chess-engines.selector" . | nindent 4 }}
+  ports:
+    - { name: http, port: 80, targetPort: http }
+{{- if .Values.engines }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-engines
+  labels: {{- include "chess-engines.labels" . | nindent 4 }}
+data:
+  engines.yaml: |
+    {{- toYaml .Values.engines | nindent 4 }}
+{{- end }}

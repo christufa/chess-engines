@@ -1,0 +1,620 @@
+{
+  "components": {
+    "schemas": {
+      "AnalyseRequest": {
+        "additionalProperties": false,
+        "description": "Analyse one position. Give `depth` or `movetime_ms`, not both; neither means the\nengine's default depth. Upper bounds are per engine (`GET /v1/engines`).",
+        "examples": [
+          {
+            "depth": 18,
+            "engine": "stockfish",
+            "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "multipv": 3
+          }
+        ],
+        "properties": {
+          "depth": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Search to this depth",
+            "title": "Depth"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Registered engine name; omitted means the default engine",
+            "title": "Engine"
+          },
+          "fen": {
+            "description": "Position in FEN (standard chess)",
+            "maxLength": 120,
+            "title": "Fen",
+            "type": "string"
+          },
+          "movetime_ms": {
+            "anyOf": [
+              {
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Search for this long",
+            "title": "Movetime Ms"
+          },
+          "multipv": {
+            "default": 1,
+            "description": "Number of best lines to return",
+            "minimum": 1.0,
+            "title": "Multipv",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fen"
+        ],
+        "title": "AnalyseRequest",
+        "type": "object"
+      },
+      "AnalyseResponse": {
+        "properties": {
+          "engine": {
+            "$ref": "#/components/schemas/EngineInfo"
+          },
+          "fen": {
+            "description": "The position, normalised",
+            "title": "Fen",
+            "type": "string"
+          },
+          "limit": {
+            "$ref": "#/components/schemas/SearchLimitOut"
+          },
+          "lines": {
+            "description": "Best first; fewer than multipv when there are fewer legal moves",
+            "items": {
+              "$ref": "#/components/schemas/Line"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "multipv": {
+            "title": "Multipv",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "checkmate",
+                  "stalemate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the side to move has no legal moves; lines is then empty",
+            "title": "Outcome"
+          },
+          "time_ms": {
+            "description": "Wall time spent in the engine, including any queue wait",
+            "title": "Time Ms",
+            "type": "integer"
+          },
+          "turn": {
+            "enum": [
+              "white",
+              "black"
+            ],
+            "title": "Turn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fen",
+          "turn",
+          "engine",
+          "limit",
+          "multipv",
+          "lines",
+          "time_ms"
+        ],
+        "title": "AnalyseResponse",
+        "type": "object"
+      },
+      "EngineEntry": {
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "What the engine reports over UCI (id name)",
+            "title": "Id",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/EngineLimits"
+          },
+          "name": {
+            "description": "Registry name, used in requests",
+            "title": "Name",
+            "type": "string"
+          },
+          "options": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            },
+            "title": "Options",
+            "type": "object"
+          },
+          "version": {
+            "description": "Pinned release in this image",
+            "title": "Version",
+            "type": "string"
+          },
+          "workers": {
+            "title": "Workers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "id",
+          "default",
+          "workers",
+          "options",
+          "limits"
+        ],
+        "title": "EngineEntry",
+        "type": "object"
+      },
+      "EngineInfo": {
+        "properties": {
+          "id": {
+            "description": "What the engine reports over UCI (id name)",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Registry name, used in requests",
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "description": "Pinned release in this image",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "id"
+        ],
+        "title": "EngineInfo",
+        "type": "object"
+      },
+      "EngineLimits": {
+        "properties": {
+          "default_depth": {
+            "title": "Default Depth",
+            "type": "integer"
+          },
+          "max_depth": {
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "max_movetime_ms": {
+            "title": "Max Movetime Ms",
+            "type": "integer"
+          },
+          "max_multipv": {
+            "title": "Max Multipv",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "default_depth",
+          "max_depth",
+          "max_movetime_ms",
+          "max_multipv"
+        ],
+        "title": "EngineLimits",
+        "type": "object"
+      },
+      "EnginesResponse": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineEntry"
+            },
+            "title": "Engines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "engines"
+        ],
+        "title": "EnginesResponse",
+        "type": "object"
+      },
+      "Line": {
+        "properties": {
+          "depth": {
+            "title": "Depth",
+            "type": "integer"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodes"
+          },
+          "pv": {
+            "description": "Principal variation in UCI, starting with this move",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pv",
+            "type": "array"
+          },
+          "pv_san": {
+            "description": "The same variation in SAN",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pv San",
+            "type": "array"
+          },
+          "rank": {
+            "description": "1 is the engine's best move",
+            "title": "Rank",
+            "type": "integer"
+          },
+          "san": {
+            "description": "The move in SAN, e.g. e4",
+            "title": "San",
+            "type": "string"
+          },
+          "score": {
+            "$ref": "#/components/schemas/Score",
+            "description": "From the side to move's point of view (as UCI reports it)"
+          },
+          "seldepth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seldepth"
+          },
+          "uci": {
+            "description": "The move in UCI notation, e.g. e2e4",
+            "title": "Uci",
+            "type": "string"
+          },
+          "white_score": {
+            "$ref": "#/components/schemas/Score",
+            "description": "From White's point of view"
+          }
+        },
+        "required": [
+          "rank",
+          "uci",
+          "san",
+          "score",
+          "white_score",
+          "depth",
+          "pv",
+          "pv_san"
+        ],
+        "title": "Line",
+        "type": "object"
+      },
+      "Load": {
+        "description": "This pod's load, for KEDA's metrics-api scaler.",
+        "properties": {
+          "in_flight": {
+            "title": "In Flight",
+            "type": "integer"
+          },
+          "queued": {
+            "title": "Queued",
+            "type": "integer"
+          },
+          "utilization": {
+            "description": "(searching + queued) / engine processes",
+            "title": "Utilization",
+            "type": "number"
+          },
+          "workers": {
+            "title": "Workers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "utilization",
+          "in_flight",
+          "queued",
+          "workers"
+        ],
+        "title": "Load",
+        "type": "object"
+      },
+      "Problem": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "Score": {
+        "description": "Exactly one of cp and mate is set. mate > 0: the side to move (or White, in\nwhite_score) mates in that many moves; mate < 0: gets mated.",
+        "properties": {
+          "cp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Centipawns",
+            "title": "Cp"
+          },
+          "mate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Moves to mate",
+            "title": "Mate"
+          }
+        },
+        "title": "Score",
+        "type": "object"
+      },
+      "SearchLimitOut": {
+        "properties": {
+          "depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depth"
+          },
+          "movetime_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Movetime Ms"
+          }
+        },
+        "title": "SearchLimitOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Shared chess-engine analysis: UCI engines (Stockfish) over HTTP.",
+    "title": "chess-engines",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "The process is up.",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Healthz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Every registered engine has at least one live process.",
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "An engine has no live process"
+          }
+        },
+        "summary": "Readyz",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/v1/analyse": {
+      "post": {
+        "description": "Analyse a position and return the best `multipv` lines, best first.",
+        "operationId": "analyse_v1_analyse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unknown engine"
+          },
+          "422": {
+            "description": "Invalid FEN, or a limit out of bounds"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Queue full or no engine free in time; retry after Retry-After"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The engine hung or crashed and is being restarted; retry"
+          }
+        },
+        "summary": "Analyse",
+        "tags": [
+          "analysis"
+        ]
+      }
+    },
+    "/v1/engines": {
+      "get": {
+        "description": "The registered engines, their versions and request limits.",
+        "operationId": "engines_v1_engines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnginesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Engines",
+        "tags": [
+          "engines"
+        ]
+      }
+    },
+    "/v1/load": {
+      "get": {
+        "description": "This pod's load (KEDA polls it to scale).",
+        "operationId": "load_v1_load_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Load"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Load",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}
