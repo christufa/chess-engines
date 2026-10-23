@@ -11,14 +11,13 @@ resources:
   requests: { cpu: "1", memory: 512Mi }
   limits: { memory: 1Gi }
 
-# Where the pods run: the openings cluster's spot pool (scales from zero, evictable).
-nodeSelector:
-  workload: batch
-tolerations:
-  - key: kubernetes.azure.com/scalesetpriority
-    operator: Equal
-    value: spot
-    effect: NoSchedule
+# Where the pods run. spot: true adds the openings cluster's spot pool to both (nodeSelector
+# workload=batch and the spot taint's toleration); false leaves placement to nodeSelector
+# and tolerations alone, e.g. an on-demand pool. (A switch, because Argo CD's valuesObject
+# can't delete a default map key with null.)
+spot: true
+nodeSelector: {}
+tolerations: []
 
 # KEDA ScaledObject on request load: GET /v1/load returns (searching + queued) / engine
 # processes for the pod the Service picks, and replicas grow while it stays above target.

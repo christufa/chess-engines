@@ -21,10 +21,16 @@ spec:
       serviceAccountName: {{ .Release.Name }}
       automountServiceAccountToken: false
       enableServiceLinks: false
-      {{- with .Values.nodeSelector }}
+      {{- $nodeSelector := .Values.nodeSelector | default dict }}
+      {{- $tolerations := .Values.tolerations | default list }}
+      {{- if .Values.spot }}
+      {{- $nodeSelector = merge (dict "workload" "batch") $nodeSelector }}
+      {{- $tolerations = append $tolerations (dict "key" "kubernetes.azure.com/scalesetpriority" "operator" "Equal" "value" "spot" "effect" "NoSchedule") }}
+      {{- end }}
+      {{- with $nodeSelector }}
       nodeSelector: {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.tolerations }}
+      {{- with $tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
