@@ -7,24 +7,24 @@ requires-python = ">=3.13"
 # Exact pins: the image and CI install from uv.lock; Dependabot bumps these.
 dependencies = [
     "chess==1.11.2",
-    "fastapi==0.120.4",
-    "pydantic==2.12.3",
+    "fastapi==0.156.1",
+    "pydantic==2.14.1",
     "pyyaml==6.0.3",
-    "uvicorn==0.38.0",
+    "uvicorn==0.54.0",
 ]
 
 [dependency-groups]
 dev = [
     "httpx==0.28.1",
-    "pytest==8.4.2",
-    "ruff==0.14.3",
+    "pytest==9.0.3",
+    "ruff==0.17.1",
 ]
 
 [project.scripts]
 chess-engines = "chess_engines.__main__:main"
 
 [build-system]
-requires = ["hatchling==1.27.0"]
+requires = ["hatchling==1.32.4"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
