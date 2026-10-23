@@ -16,6 +16,27 @@ POST /v1/analyse
 {"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "depth": 18, "multipv": 3}
 ```
 
+## Playground
+
+The service also serves a small UI at `/`: a board to analyse any position with the
+registered engines.
+- Choose the engine, a depth or move time, and up to 10 lines.
+- The lines show as arrows and ranked variations with an eval bar. Click a move in a
+  variation to play the line up to it.
+- Play against the engine as either colour.
+- Move through the game with the arrow keys (`f` flips the board).
+- The position is kept in the URL (`#fen=…`), so a link opens the same position.
+
+It calls the same `/v1` API as everyone else, so its limits and queue apply. In the openings
+cluster it is at `https://chess-engines.generops.dev/`, behind a Microsoft sign-in for the
+owner (other projects keep using service tokens). The source is in `web/` (React, Vite and
+Tailwind, like the openings explorer); `docker/Dockerfile` typechecks, tests and builds it
+into the image.
+
+```powershell
+cd web; npm ci; npm run dev   # http://127.0.0.1:5173, proxying /v1 to a service on :8000
+```
+
 ## Calling it from another project
 
 | From | URL | Authentication |
@@ -71,10 +92,11 @@ cached by `(fen, engine, version, depth, multipv)`.
 | Path | What |
 |---|---|
 | `src/chess_engines/` | FastAPI app (`app.py`), engine process pool and queue (`pool.py`), registry (`registry.py`) |
+| `web/` | The playground UI, served at `/` |
 | `engines/` | The registry baked into the image, and each engine's pinned, checksum-verified download |
 | `docker/Dockerfile` | Digest-pinned base, non-root, runs on a read-only root filesystem |
 | `chart/chess-engines/` | Helm chart: Deployment on the spot pool, KEDA ScaledObject, Cilium network policy |
-| `.github/workflows/` | `ci.yml` (tests, against real Stockfish too), `containers.yml` (image smoke test and Trivy on PRs), `images.yml` (publish, sign and release from `main`), `security.yml` (CodeQL, dependency review) |
+| `.github/workflows/` | `ci.yml` (tests, against real Stockfish too), `containers.yml` (image smoke test, browser smoke of the playground and Trivy on PRs), `images.yml` (publish, sign and release from `main`), `security.yml` (CodeQL, dependency review) |
 
 ## How it works
 

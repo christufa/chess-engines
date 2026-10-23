@@ -7,3 +7,6 @@
 chart
 docs
 tests
+web/node_modules
+web/dist
+src/chess_engines/web

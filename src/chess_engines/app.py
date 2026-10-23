@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import chess
 import chess.engine
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .models import (
@@ -29,6 +32,16 @@ from .pool import EngineHung, EnginePool, QueueFull, QueueTimeout, SearchLimit
 from .registry import Registry, load_registry
 
 log = logging.getLogger(__name__)
+
+# The playground UI (web/), built into the package by docker/Dockerfile.
+WEB_DIR = Path(os.environ.get("CHESS_ENGINES_WEB_DIR", Path(__file__).parent / "web"))
+
+# For the playground's pages: its own scripts and styles only. Not on /docs, which loads
+# Swagger UI from a CDN.
+PLAYGROUND_CSP = (
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+)
 
 ERRORS = {
     404: {"model": Problem, "description": "Unknown engine"},
@@ -140,6 +153,20 @@ def create_app(registry: Registry | None = None) -> FastAPI:
                                 headers={"Retry-After": "5"}) from exc
         elapsed = int((time.monotonic() - started) * 1000)
         return AnalyseResponse(**response, lines=to_lines(board, infos), time_ms=elapsed)
+
+    if WEB_DIR.is_dir():
+        @app.middleware("http")
+        async def playground_headers(request: Request, call_next):
+            response = await call_next(request)
+            path = request.url.path
+            if not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json", "/healthz", "/readyz")):
+                response.headers["Content-Security-Policy"] = PLAYGROUND_CSP
+                response.headers["X-Content-Type-Options"] = "nosniff"
+                response.headers["Referrer-Policy"] = "no-referrer"
+            return response
+
+        # Last, so the API routes above take precedence.
+        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="playground")
 
     return app
 

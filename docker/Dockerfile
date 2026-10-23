@@ -1,6 +1,6 @@
-# chess-engines: the analysis API plus its UCI engines. Bases pinned by digest (Dependabot
-# bumps them); Python dependencies from uv.lock; each engine a pinned, checksum-verified
-# release. Runs as a non-root user on a read-only root filesystem (only /tmp is writable).
+# chess-engines: the analysis API, its playground UI and its UCI engines. Bases pinned by
+# digest (Dependabot bumps them); Python dependencies from uv.lock, the UI's from
+# web/package-lock.json; each engine a pinned, checksum-verified release. Runs as a non-root user on a read-only root filesystem (only /tmp is writable).
 FROM python:3.13-slim@sha256:57b29a7c050c4e679e4bea572e14b3965cf4b5839de2da49d55e49ffc4024f39 AS base
 
 # ---- Engines: one stage per engine, each landing in /opt/engines/<name> ----
@@ -10,7 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY engines/stockfish/fetch.sh /tmp/fetch.sh
 RUN sh /tmp/fetch.sh /opt/engines/stockfish
 
-# ---- Python environment ----
+# ---- The playground UI (web/): typecheck, unit tests and the production build ----
+FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run typecheck && npm test && npx vite build
+
+# ---- Python environment, with the UI in the package ----
 FROM base AS build
 COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
@@ -18,6 +26,7 @@ WORKDIR /src
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
+COPY --from=web /web/dist/ ./src/chess_engines/web/
 RUN uv sync --frozen --no-dev --no-editable
 
 # ---- Runtime ----

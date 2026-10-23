@@ -12,3 +12,7 @@ build/
 *.tfstate*
 .engines/
 chart/*/charts/
+web/node_modules/
+web/dist/
+src/chess_engines/web/
+.cache/
