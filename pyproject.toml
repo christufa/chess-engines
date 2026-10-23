@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 # Exact pins: the image and CI install from uv.lock; Dependabot bumps these.
 dependencies = [
     "chess==1.11.2",
-    "fastapi==0.120.4",
+    "fastapi==0.156.1",
     "pydantic==2.12.3",
     "pyyaml==6.0.3",
     "uvicorn==0.38.0",
