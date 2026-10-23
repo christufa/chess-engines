@@ -48,12 +48,18 @@ client = httpx.Client(
 lines = client.post("/v1/analyse", json={"fen": fen, "depth": 18, "multipv": 3}).raise_for_status().json()["lines"]
 ```
 
-**Getting a token.** The service token is created by Terraform in the openings repository
-(`infra/gitops/edge.tf`), which also stores it in the openings Key Vault as the secrets
-`chess-engines-access-client-id` and `chess-engines-access-client-secret`. A project in
-another cluster copies them into its own secret store (for example, an External Secrets
-`ExternalSecret`, or a GitHub Actions secret). To give a project its own token that can be
-revoked separately, add it to `chess_engines_service_tokens` in that file.
+**Getting a token.** Service tokens are created by Terraform in the openings repository
+(`infra/gitops/edge.tf`, variable `chess_engines_service_tokens`, default `shared`), which
+also stores each one in the openings Key Vault as `chess-engines-<name>-client-id` and
+`chess-engines-<name>-client-secret`. A project in another cluster copies them into its own
+secret store (an External Secrets `ExternalSecret`, or a GitHub Actions secret). To give a
+project its own token that can be revoked separately, add its name to that variable.
+
+To check the deployment end to end, from inside the cluster and through Access:
+
+```powershell
+./scripts/check-deployment.ps1 -KeyVault <vault name>
+```
 
 **Batch callers** (for example, precomputing evaluations for an opening tree): run about as
 many requests in parallel as there are engine processes (2 per pod, up to 3 pods), and
