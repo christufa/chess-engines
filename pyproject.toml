@@ -29,6 +29,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chess_engines"]
+# The playground build, copied in by docker/Dockerfile (gitignored, so listed explicitly).
+artifacts = ["src/chess_engines/web/**"]
 
 [tool.ruff]
 line-length = 110
