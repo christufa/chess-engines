@@ -18,7 +18,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx==0.28.1",
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "ruff==0.17.1",
 ]
 # The browser smoke test in containers.yml (tests/browser_smoke.py); not needed for pytest.
