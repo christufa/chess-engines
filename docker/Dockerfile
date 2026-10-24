@@ -10,6 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY engines/stockfish/fetch.sh /tmp/fetch.sh
 RUN sh /tmp/fetch.sh /opt/engines/stockfish
 
+# Lc0, built from source for CPU (it publishes no Linux binaries), and the Maia nets it runs.
+FROM base AS lc0
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates g++ meson \
+      ninja-build zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY engines/lc0/build.sh /tmp/build.sh
+RUN sh /tmp/build.sh /opt/engines/lc0
+COPY engines/maia/fetch.sh /tmp/fetch-maia.sh
+RUN sh /tmp/fetch-maia.sh /opt/engines/maia
+
 # ---- The playground UI (web/): typecheck, unit tests and the production build ----
 FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS web
 WORKDIR /web
@@ -34,12 +44,14 @@ FROM base
 # OS security updates on top of the pinned base (CI fails on fixable critical CVEs).
 RUN apt-get update && apt-get -y upgrade && rm -rf /var/lib/apt/lists/*
 COPY --from=stockfish /opt/engines/stockfish /opt/engines/stockfish
+COPY --from=lc0 /opt/engines/lc0 /opt/engines/lc0
+COPY --from=lc0 /opt/engines/maia /opt/engines/maia
 COPY --from=build /app/.venv /app/.venv
 COPY engines/engines.yaml /etc/chess-engines/engines.yaml
 ARG CODE_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/christufa/chess-engines" \
       org.opencontainers.image.revision="${CODE_VERSION}" \
-      org.opencontainers.image.licenses="GPL-3.0-or-later"
+      org.opencontainers.image.licenses="Apache-2.0 AND GPL-3.0-or-later"
 ENV PATH=/app/.venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp \
     CHESS_ENGINES_CONFIG=/etc/chess-engines/engines.yaml
 USER 10001:10001

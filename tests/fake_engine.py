@@ -2,6 +2,8 @@
 
 `fake_engine.py ok`: answers every `go` at once with the first legal moves, scored
 100, 90, 80... `fake_engine.py hang`: answers the handshake, then never answers `go`.
+`fake_engine.py policy`: like ok, plus an Lc0-style `info string` per legal move with its
+policy probability (P), the first move 40%, the next 20%, then 10%, 5%...
 """
 
 import sys
@@ -47,6 +49,11 @@ for raw in sys.stdin:
         moves = list(board.legal_moves)[:multipv]
         for i, move in enumerate(moves, start=1):
             say(f"info depth 5 seldepth 7 multipv {i} score cp {110 - 10 * i} nodes 1000 pv {move.uci()}")
+        if mode == "policy":
+            # Lc0 lists the least likely move first.
+            for i, move in reversed(list(enumerate(board.legal_moves))):
+                p = 40 / 2**i
+                say(f"info string {move.uci():<5} ({i:<4}) N:       0 (+ 0) (P: {p:5.2f}%) (Q: -0.03354)")
         say(f"bestmove {moves[0].uci()}")
     elif cmd[0] == "quit":
         break

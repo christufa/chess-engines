@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 DEFAULT_CONFIG = "/etc/chess-engines/engines.yaml"
+
+Search = Literal["depth", "movetime", "nodes"]
 
 
 class Limits(BaseModel):
@@ -20,9 +23,15 @@ class Limits(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # The kinds of search a request may ask for, and the one used when it asks for none.
+    # Maia, for example, plays like a human only at one node, so it allows nodes alone.
+    searches: list[Search] = Field(["depth", "movetime", "nodes"], min_length=1)
+    default_search: Literal["depth", "nodes"] = "depth"
     default_depth: int = Field(18, ge=1)
     max_depth: int = Field(30, ge=1)
     max_movetime_ms: int = Field(10_000, ge=10)
+    default_nodes: int = Field(1_000_000, ge=1)
+    max_nodes: int = Field(100_000_000, ge=1)
     max_multipv: int = Field(10, ge=1, le=256)
     # Requests waiting for a free engine process; more are refused with 503.
     max_queue: int = Field(16, ge=0)
@@ -37,6 +46,10 @@ class Limits(BaseModel):
     def _default_within_max(self) -> Limits:
         if self.default_depth > self.max_depth:
             raise ValueError("default_depth exceeds max_depth")
+        if self.default_nodes > self.max_nodes:
+            raise ValueError("default_nodes exceeds max_nodes")
+        if self.default_search not in self.searches:
+            raise ValueError(f"default_search {self.default_search!r} is not in searches")
         return self
 
 
@@ -44,6 +57,8 @@ class EngineSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{0,31}$")
+    # For people, e.g. "Maia 1500"; the name is for requests.
+    title: str | None = Field(None, max_length=64)
     # The binary; args are appended (an interpreter plus a script in tests, for example).
     path: str
     args: list[str] = []

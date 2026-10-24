@@ -6,6 +6,7 @@
 default_engine: stockfish
 engines:
   - name: stockfish
+    title: Stockfish 19
     path: /opt/engines/stockfish/stockfish
     version: "19"            # engines/stockfish/fetch.sh pins the release
     workers: 2               # engine processes per pod
@@ -21,3 +22,37 @@ engines:
       queue_timeout_s: 30
       max_search_s: 30
       hang_grace_s: 10
+
+  # Maia (CSSLab/maia-chess): Lc0 networks trained to play like Lichess players of one
+  # rating band each. Human-like only at one node, so a request can't ask for more; each
+  # line carries the network's probability that a player at that level plays the move.
+  # engines/lc0/build.sh and engines/maia/fetch.sh pin the engine and the nets.
+  - &maia
+    name: maia-1100
+    title: Maia 1100
+    path: /opt/engines/lc0/lc0
+    args: [--weights=/opt/engines/maia/maia-1100.pb.gz]
+    version: "1.0 (Lc0 0.32.1)"
+    workers: 1
+    options: &maia-options
+      Threads: 1
+      NNCacheSize: 10000     # positions; one node per request needs little
+      VerboseMoveStats: true # per-move policy probabilities, as info strings
+    limits: &maia-limits
+      searches: [nodes]
+      default_search: nodes
+      default_nodes: 1
+      max_nodes: 1
+      max_multipv: 10
+      max_queue: 16
+      queue_timeout_s: 30
+      max_search_s: 5
+      hang_grace_s: 5
+  - {<<: *maia, name: maia-1200, title: Maia 1200, args: [--weights=/opt/engines/maia/maia-1200.pb.gz]}
+  - {<<: *maia, name: maia-1300, title: Maia 1300, args: [--weights=/opt/engines/maia/maia-1300.pb.gz]}
+  - {<<: *maia, name: maia-1400, title: Maia 1400, args: [--weights=/opt/engines/maia/maia-1400.pb.gz]}
+  - {<<: *maia, name: maia-1500, title: Maia 1500, args: [--weights=/opt/engines/maia/maia-1500.pb.gz]}
+  - {<<: *maia, name: maia-1600, title: Maia 1600, args: [--weights=/opt/engines/maia/maia-1600.pb.gz]}
+  - {<<: *maia, name: maia-1700, title: Maia 1700, args: [--weights=/opt/engines/maia/maia-1700.pb.gz]}
+  - {<<: *maia, name: maia-1800, title: Maia 1800, args: [--weights=/opt/engines/maia/maia-1800.pb.gz]}
+  - {<<: *maia, name: maia-1900, title: Maia 1900, args: [--weights=/opt/engines/maia/maia-1900.pb.gz]}

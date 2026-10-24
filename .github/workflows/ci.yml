@@ -1,7 +1,7 @@
 # Tests on every PR (the required "Tests" check): lint, the API against a fake engine, and
-# the same tests against the real, pinned Stockfish release (mate-in-one, multipv
-# ordering, determinism, queueing). Also checks that docs/openapi.json is current and that
-# the Helm chart renders.
+# the same tests against the real, pinned engines: Stockfish (mate-in-one, multipv
+# ordering, determinism, queueing) and Maia on Lc0 (human move probabilities, one node
+# only). Also checks that docs/openapi.json is current and that the Helm chart renders.
 name: CI
 
 on:
@@ -42,10 +42,31 @@ jobs:
       - name: Fetch the pinned Stockfish (checksum verified)
         run: sh engines/stockfish/fetch.sh "$RUNNER_TEMP/stockfish"
 
-      - name: Tests, including against real Stockfish
+      # Lc0 has no Linux release, so it is built from the pinned source (a few minutes);
+      # the build is cached under the hash of the script that pins it.
+      - name: Cache the Lc0 build
+        id: lc0-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/lc0
+          key: lc0-${{ runner.os }}-${{ hashFiles('engines/lc0/build.sh') }}
+
+      - name: Build the pinned Lc0 (checksum verified)
+        if: steps.lc0-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends meson ninja-build zlib1g-dev
+          sh engines/lc0/build.sh "$RUNNER_TEMP/lc0"
+
+      - name: Fetch the pinned Maia nets (checksum verified)
+        run: sh engines/maia/fetch.sh "$RUNNER_TEMP/maia"
+
+      - name: Tests, including against real Stockfish and Maia
         env:
           STOCKFISH_PATH: ${{ runner.temp }}/stockfish/stockfish
-          CHESS_ENGINES_REQUIRE_STOCKFISH: "1" # fail, not skip, if the engine is missing
+          LC0_PATH: ${{ runner.temp }}/lc0/lc0
+          MAIA_DIR: ${{ runner.temp }}/maia
+          CHESS_ENGINES_REQUIRE_STOCKFISH: "1" # fail, not skip, if an engine is missing
         run: uv run --frozen pytest -q
 
       - name: Render the Helm chart

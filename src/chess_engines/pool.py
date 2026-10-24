@@ -38,6 +38,15 @@ class EngineHung(Exception):
 class SearchLimit:
     depth: int | None = None
     movetime_ms: int | None = None
+    nodes: int | None = None
+
+
+@dataclass
+class SearchResult:
+    # One info per line, best first (python-chess's multipv view).
+    infos: list[chess.engine.InfoDict]
+    # Every `info string` the engine sent, in order (Lc0's per-move stats, for example).
+    strings: list[str]
 
 
 class Worker:
@@ -96,9 +105,7 @@ class EnginePool:
     def alive_workers(self) -> int:
         return sum(w.alive for w in self.workers)
 
-    async def analyse(
-        self, board: chess.Board, limit: SearchLimit, multipv: int
-    ) -> list[chess.engine.InfoDict]:
+    async def analyse(self, board: chess.Board, limit: SearchLimit, multipv: int) -> SearchResult:
         limits = self.spec.limits
         if self.waiting >= limits.max_queue and self._idle.empty():
             raise QueueFull(self.spec.name)
@@ -119,14 +126,14 @@ class EnginePool:
 
     async def _search(
         self, worker: Worker, board: chess.Board, limit: SearchLimit, multipv: int
-    ) -> list[chess.engine.InfoDict]:
+    ) -> SearchResult:
         limits = self.spec.limits
         if limit.movetime_ms is not None:
             engine_limit = chess.engine.Limit(time=limit.movetime_ms / 1000)
             budget = limit.movetime_ms / 1000
         else:
             # The engine itself stops a deep search at max_search_s and reports what it has.
-            engine_limit = chess.engine.Limit(depth=limit.depth, time=limits.max_search_s)
+            engine_limit = chess.engine.Limit(depth=limit.depth, nodes=limit.nodes, time=limits.max_search_s)
             budget = limits.max_search_s
         started = time.monotonic()
         try:
@@ -135,9 +142,7 @@ class EnginePool:
             # A new game per request: no hash carried over, so the same request gets the
             # same answer (with Threads=1 and a depth limit).
             return await asyncio.wait_for(
-                worker.engine.analyse(board, engine_limit, multipv=multipv, game=object(),
-                                      info=chess.engine.INFO_ALL),
-                timeout=budget + limits.hang_grace_s,
+                self._run(worker, board, engine_limit, multipv), timeout=budget + limits.hang_grace_s,
             )
         except (TimeoutError, chess.engine.EngineTerminatedError, chess.engine.EngineError) as exc:
             log.warning("%s worker %d failed after %.1fs (%r); restarting",
@@ -147,3 +152,17 @@ class EnginePool:
             except Exception:
                 log.exception("%s worker %d did not restart", self.spec.name, worker.index)
             raise EngineHung(self.spec.name) from exc
+
+    @staticmethod
+    async def _run(
+        worker: Worker, board: chess.Board, limit: chess.engine.Limit, multipv: int
+    ) -> SearchResult:
+        # analysis() rather than analyse(): it yields every info, so `info string` lines
+        # aren't overwritten by the next one.
+        strings: list[str] = []
+        with await worker.engine.analysis(board, limit, multipv=multipv, game=object(),
+                                          info=chess.engine.INFO_ALL) as analysis:
+            async for info in analysis:
+                if "string" in info:
+                    strings.append(info["string"])
+        return SearchResult(infos=list(analysis.multipv), strings=strings)

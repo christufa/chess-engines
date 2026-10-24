@@ -1,5 +1,5 @@
 import type { Analysis } from "../api";
-import { formatScore, numberMoves } from "../model";
+import { formatProbability, formatScore, numberMoves } from "../model";
 
 interface Props {
   fen: string;
@@ -13,7 +13,8 @@ interface Props {
 /** Half-moves of each variation to show; the rest are hidden to keep rows short. */
 const SHOWN_PLIES = 12;
 
-/** The engine's lines, best first: score, depth and the variation; click a move to play to it. */
+/** The engine's lines, best first: score (or, for Maia, how likely a human is to play the move),
+ *  depth and the variation; click a move to play to it. */
 export function Lines({ fen, analysis, loading, onHover, onPlay }: Props) {
   if (analysis?.outcome) {
     return <p className="px-3 py-4 text-sm text-strong capitalize">{analysis.outcome}.</p>;
@@ -37,7 +38,7 @@ export function Lines({ fen, analysis, loading, onHover, onPlay }: Props) {
             title={`Play ${line.san}`}
             onClick={() => onPlay(i, 1)}
           >
-            {formatScore(line.white_score)}
+            {line.probability !== null ? formatProbability(line.probability) : formatScore(line.white_score)}
           </button>
           <span className="min-w-0 flex-1 leading-6">
             {numberMoves(fen, line.pv_san.slice(0, SHOWN_PLIES)).map((m) => (
@@ -53,10 +54,12 @@ export function Lines({ fen, analysis, loading, onHover, onPlay }: Props) {
             ))}
             {line.pv_san.length > SHOWN_PLIES && <span className="text-muted">…</span>}
           </span>
-          <span className="shrink-0 text-right text-xs leading-6 text-muted tabular-nums" title="depth/seldepth">
-            d{line.depth}
-            {line.seldepth ? `/${line.seldepth}` : ""}
-          </span>
+          {line.probability === null && (
+            <span className="shrink-0 text-right text-xs leading-6 text-muted tabular-nums" title="depth/seldepth">
+              d{line.depth}
+              {line.seldepth ? `/${line.seldepth}` : ""}
+            </span>
+          )}
         </li>
       ))}
     </ol>

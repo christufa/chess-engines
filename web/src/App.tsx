@@ -6,19 +6,20 @@ import { Controls, type Settings } from "./components/Controls";
 import { EvalBar } from "./components/EvalBar";
 import { Lines } from "./components/Lines";
 import { MoveList } from "./components/MoveList";
-import { lineArrows, positions, sanMoves, START_FEN, validFen } from "./model";
+import { lineArrows, positions, sanMoves, searchFor, START_FEN, validFen } from "./model";
 
 function initialFen(): string {
   const fen = new URLSearchParams(location.hash.slice(1)).get("fen");
   return fen && validFen(fen) === null ? fen : START_FEN;
 }
 
-function requestFor(fen: string, s: Settings, multipv: number): AnalyseRequest {
+function requestFor(fen: string, engine: string, engines: Engine[], s: Settings, multipv: number): AnalyseRequest {
+  const spec = engines.find((e) => e.name === engine);
   return {
     fen,
-    engine: s.engine,
-    multipv,
-    ...(s.limit === "depth" ? { depth: s.depth } : { movetime_ms: s.movetimeMs }),
+    engine,
+    multipv: spec ? Math.min(multipv, spec.limits.max_multipv) : multipv,
+    ...searchFor(spec, s),
   };
 }
 
@@ -28,7 +29,7 @@ export default function App() {
   const [engines, setEngines] = useState<Engine[]>([]);
   const [settings, setSettings] = useState<Settings>({
     engine: "stockfish", limit: "depth", depth: 18, movetimeMs: 1000, multipv: 3,
-    auto: true, engineSide: null, promotion: "q",
+    auto: true, engineSide: null, opponent: "stockfish", promotion: "q",
   });
   const [startFen, setStartFen] = useState(initialFen);
   const [moves, setMoves] = useState<string[]>([]);
@@ -53,7 +54,13 @@ export default function App() {
       .then((list) => {
         setEngines(list);
         const engine = list.find((e) => e.default) ?? list[0];
-        if (engine) setSettings((s) => ({ ...s, engine: engine.name, depth: Math.min(s.depth, engine.limits.max_depth) }));
+        // A human-like opponent where there is one: Maia at a middling level.
+        const opponent = list.find((e) => e.name === "maia-1500") ?? engine;
+        if (engine) {
+          setSettings((s) => ({
+            ...s, engine: engine.name, opponent: opponent.name, depth: Math.min(s.depth, engine.limits.max_depth),
+          }));
+        }
       })
       .catch((e) => setError(`Couldn't list engines: ${e instanceof Error ? e.message : e}`));
   }, []);
@@ -124,15 +131,16 @@ export default function App() {
   useEffect(() => {
     if (engineToMove) {
       const timer = setTimeout(
-        () => run(requestFor(fen, settings, 1), (a) => a.fen === fen && a.lines[0] && play([a.lines[0].uci])),
+        () => run(requestFor(fen, settings.opponent, engines, settings, 1),
+          (a) => a.fen === fen && a.lines[0] && play([a.lines[0].uci])),
         300,
       );
       return () => clearTimeout(timer);
     }
     if (!settings.auto) return;
-    const timer = setTimeout(() => run(requestFor(fen, settings, settings.multipv)), 250);
+    const timer = setTimeout(() => run(requestFor(fen, settings.engine, engines, settings, settings.multipv)), 250);
     return () => clearTimeout(timer);
-  }, [fen, settings, engineToMove, run, play]);
+  }, [fen, settings, engines, engineToMove, run, play]);
 
   // Keyboard: arrows walk the game, f flips the board.
   useEffect(() => {
@@ -151,6 +159,9 @@ export default function App() {
     : null;
   const shown = current ?? (busy ? analysis : null);
   const lastMove = cursor > 0 ? moves[cursor - 1] : null;
+  const titleOf = (name: string) => engines.find((e) => e.name === name)?.title ?? name;
+  // Maia's lines carry move probabilities; its score is a rough value head, not an evaluation.
+  const evaluated = current?.lines[0] && current.lines[0].probability === null ? current.lines[0] : undefined;
 
   return (
     <div className="mx-auto flex min-h-full max-w-6xl flex-col gap-4 p-4">
@@ -159,7 +170,7 @@ export default function App() {
         <nav className="flex gap-4 text-sm text-muted">
           {current && (
             <span className="tabular-nums">
-              {current.engine.id} · {current.time_ms} ms
+              {titleOf(current.engine.name)} · {current.time_ms} ms
             </span>
           )}
           <a className="hover:text-strong" href="/docs">
@@ -171,7 +182,7 @@ export default function App() {
       <main className="grid gap-4 md:grid-cols-[minmax(0,1fr)_380px]">
         <section className="min-w-0">
           <div className="flex gap-2">
-            <EvalBar score={current?.lines[0]?.white_score} orientation={orientation} />
+            <EvalBar score={evaluated?.white_score} orientation={orientation} />
             <div className="min-w-0 flex-1">
               <Board
                 fen={fen}
@@ -212,7 +223,7 @@ export default function App() {
             engines={engines}
             settings={settings}
             onChange={setSettings}
-            onAnalyse={() => run(requestFor(fen, settings, settings.multipv))}
+            onAnalyse={() => run(requestFor(fen, settings.engine, engines, settings, settings.multipv))}
             busy={busy}
           />
           {error && (

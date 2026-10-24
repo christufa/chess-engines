@@ -4,7 +4,8 @@ A shared chess-engine analysis service: UCI engines over a small synchronous HTT
 Projects send a position and get the engine's best lines back, ranked, with scores in
 centipawns or mate, depth, nodes and the principal variation in UCI and SAN.
 
-- **Engines:** Stockfish 19 to start, from a pluggable registry ([`engines/engines.yaml`](engines/engines.yaml)).
+- **Engines:** Stockfish 19, and Maia 1100 to 1900 (human-like play, on Lc0), from a
+  pluggable registry ([`engines/engines.yaml`](engines/engines.yaml)).
 - **API:** [`docs/api.md`](docs/api.md), and the OpenAPI document [`docs/openapi.json`](docs/openapi.json).
 - **Runs** as one shared instance in the openings cluster (AKS `aks-openings`, namespace
   `chess-engines`), wired up in
@@ -22,8 +23,9 @@ The service also serves a small UI at `/`: a board to analyse any position with 
 registered engines.
 - Choose the engine, a depth or move time, and up to 10 lines.
 - The lines show as arrows and ranked variations with an eval bar. Click a move in a
-  variation to play the line up to it.
-- Play against the engine as either colour.
+  variation to play the line up to it. With Maia, the lines show how likely a player at
+  that level is to play each move.
+- Play against any engine as either colour, for example Maia 1500 while Stockfish analyses.
 - Move through the game with the arrow keys (`f` flips the board).
 - The position is kept in the URL (`#fen=…`), so a link opens the same position.
 
@@ -96,11 +98,12 @@ cached by `(fen, engine, version, depth, multipv)`.
 | `engines/` | The registry baked into the image, and each engine's pinned, checksum-verified download |
 | `docker/Dockerfile` | Digest-pinned base, non-root, runs on a read-only root filesystem |
 | `chart/chess-engines/` | Helm chart: Deployment on the spot pool, KEDA ScaledObject, Cilium network policy |
-| `.github/workflows/` | `ci.yml` (tests, against real Stockfish too), `containers.yml` (image smoke test, browser smoke of the playground and Trivy on PRs), `images.yml` (publish, sign and release from `main`), `security.yml` (CodeQL, dependency review) |
+| `.github/workflows/` | `ci.yml` (tests, against real Stockfish and Maia too), `containers.yml` (image smoke test, browser smoke of the playground and Trivy on PRs), `images.yml` (publish, sign and release from `main`), `security.yml` (CodeQL, dependency review) |
 
 ## How it works
 
-Each pod runs `workers` processes per engine (2 for Stockfish, `Threads=1`, `Hash=64`).
+Each pod runs `workers` processes per engine (2 for Stockfish, `Threads=1`, `Hash=64`; 1
+for each Maia level).
 A request takes a free process or waits in a bounded queue (`max_queue`, `queue_timeout_s`);
 a full queue is a 503 with `Retry-After`. Every search has a hard deadline: its own limit
 (`movetime_ms`, or `max_search_s` for depth searches) plus `hang_grace_s`. An engine that
@@ -114,11 +117,13 @@ the KEDA HTTP add-on in front of the Service.
 ## Adding a UCI engine
 
 1. A stage in `docker/Dockerfile` that downloads a pinned release, verifies its checksum
-   and installs it under `/opt/engines/<name>` (see `engines/stockfish/fetch.sh`). CPU-only
-   engines only: the cluster has no GPUs, so Lc0 is out.
-2. An entry in `engines/engines.yaml`: `name`, `path`, `version`, `workers`, UCI `options`
-   and `limits`.
-3. Tests for it next to `tests/test_stockfish.py`, run in CI against the real binary.
+   and installs it under `/opt/engines/<name>` (see `engines/stockfish/fetch.sh`). Where
+   there is no Linux release, build the pinned source instead (`engines/lc0/build.sh`).
+   CPU only: the cluster has no GPUs.
+2. An entry in `engines/engines.yaml`: `name`, `title`, `path`, `args`, `version`,
+   `workers`, UCI `options` and `limits`, including which `searches` it accepts.
+3. Tests for it next to `tests/test_stockfish.py` and `tests/test_maia.py`, run in CI
+   against the real binary.
 
 Clients choose it with `"engine": "<name>"`; `GET /v1/engines` lists what is registered.
 
@@ -163,7 +168,8 @@ dependency review, Trivy and an OpenSSF Scorecard, and every action is pinned to
 
 The code in this repository is licensed under the [Apache License 2.0](LICENSE).
 
-Stockfish is not part of this repository and keeps its own licence, GPL-3.0. The service
-runs it as a separate process and talks to it over UCI. The image includes the Stockfish
-binary, with its licence and a reference to its source in `/opt/engines/stockfish/`
-(`COPYING`, `SOURCE`).
+The engines are not part of this repository and keep their own licence, GPL-3.0:
+Stockfish, Lc0 and the Maia networks. The service runs each engine as a separate process
+and talks to it over UCI. The image includes their binaries and networks, each with its
+licence and a reference to its source (`COPYING`, `SOURCE`) in `/opt/engines/stockfish/`,
+`/opt/engines/lc0/` and `/opt/engines/maia/`.
