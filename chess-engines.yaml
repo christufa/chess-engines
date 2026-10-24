@@ -1,4 +1,4 @@
-# Written by .github/workflows/images.yml for main commit 56a7c0313a4d1467cd005fe5aeaba3444bfee01f. Don't edit.
-commit: 56a7c0313a4d1467cd005fe5aeaba3444bfee01f
+# Written by .github/workflows/images.yml for main commit 18f06b1af37b4e362fe39929272b5c78c046c405. Don't edit.
+commit: 18f06b1af37b4e362fe39929272b5c78c046c405
 image:
-  digest: sha256:650e23588cb4c9a98c59a54951bcb37bc4b95fa1810013a36a62c119a161f8ed
+  digest: sha256:77d01ccd3ff3c58e40b5d4cb1a46392ded54974fd1428df32ded22390ecb749f
