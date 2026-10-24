@@ -154,6 +154,11 @@ cosign verify <registry>/chess-engines@sha256:<digest> `
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
+## Security
+
+Report vulnerabilities privately; see [SECURITY.md](SECURITY.md). CI runs CodeQL,
+dependency review, Trivy and an OpenSSF Scorecard, and every action is pinned to a commit.
+
 ## Licence
 
 The image contains Stockfish, which is GPL-3.0; its licence and the source reference are

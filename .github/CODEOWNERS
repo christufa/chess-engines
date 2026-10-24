@@ -1,0 +1,6 @@
+# Every change needs the owner's review. Workflows and the chart are listed on their own so
+# a later, wider rule above them can't loosen who reviews what reaches the cluster.
+*                   @christufa
+/.github/           @christufa
+/chart/             @christufa
+/docker/            @christufa
