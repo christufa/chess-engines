@@ -3,6 +3,8 @@ name = "chess-engines"
 version = "0.1.0"
 description = "Shared chess-engine analysis service: UCI engines (Stockfish) over HTTP"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.13"
 # Exact pins: the image and CI install from uv.lock; Dependabot bumps these.
 dependencies = [
