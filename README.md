@@ -161,5 +161,9 @@ dependency review, Trivy and an OpenSSF Scorecard, and every action is pinned to
 
 ## Licence
 
-The image contains Stockfish, which is GPL-3.0; its licence and the source reference are
-in `/opt/engines/stockfish/` in the image (`COPYING`, `SOURCE`).
+The code in this repository is licensed under the [Apache License 2.0](LICENSE).
+
+Stockfish is not part of this repository and keeps its own licence, GPL-3.0. The service
+runs it as a separate process and talks to it over UCI. The image includes the Stockfish
+binary, with its licence and a reference to its source in `/opt/engines/stockfish/`
+(`COPYING`, `SOURCE`).
