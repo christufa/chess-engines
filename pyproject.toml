@@ -19,6 +19,10 @@ dev = [
     "pytest==9.0.3",
     "ruff==0.17.1",
 ]
+# The browser smoke test in containers.yml (tests/browser_smoke.py); not needed for pytest.
+browser = [
+    "playwright==1.64.0",
+]
 
 [project.scripts]
 chess-engines = "chess_engines.__main__:main"

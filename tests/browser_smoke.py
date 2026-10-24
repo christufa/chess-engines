@@ -1,7 +1,7 @@
 """Drive the playground in a real browser against a running image (real Stockfish):
 
     docker run -d --read-only --tmpfs /tmp -p 127.0.0.1:8000:8000 chess-engines:ci
-    python tests/browser_smoke.py http://127.0.0.1:8000
+    uv run --group browser python tests/browser_smoke.py http://127.0.0.1:8000
 
 Not a pytest module (CI runs it in containers.yml). Fails on any page error or
 Content-Security-Policy violation, so the production headers are checked too.
