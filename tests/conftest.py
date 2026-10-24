@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from chess_engines.app import create_app
-from chess_engines.registry import Registry
+from chess_engines.registry import Registry, load_registry
 
 FAKE = str(Path(__file__).with_name("fake_engine.py"))
 START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -45,4 +45,23 @@ def stockfish_client(stockfish_path):
         "limits": {"default_depth": 12, "max_depth": 30, "max_movetime_ms": 5000, "max_multipv": 10},
     }], "stockfish")
     with TestClient(create_app(reg)) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def maia_client():
+    """Three Maia levels on the real Lc0 (LC0_PATH) and nets (MAIA_DIR), set up as
+    engines/engines.yaml sets them up."""
+    lc0, nets = os.environ.get("LC0_PATH"), os.environ.get("MAIA_DIR")
+    if not (lc0 and nets and Path(lc0).exists() and Path(nets).is_dir()):
+        if os.environ.get("CHESS_ENGINES_REQUIRE_STOCKFISH") == "1":
+            pytest.fail("LC0_PATH and MAIA_DIR must point to Lc0 and the Maia nets here")
+        pytest.skip("LC0_PATH and MAIA_DIR not set (engines/lc0/build.sh, engines/maia/fetch.sh)")
+    shipped = load_registry(Path(__file__).parents[1] / "engines" / "engines.yaml")
+    engines = []
+    for level in (1100, 1500, 1900):
+        spec = shipped.get(f"maia-{level}").model_dump()
+        spec.update(path=lc0, args=[f"--weights={Path(nets) / f'maia-{level}.pb.gz'}"])
+        engines.append(spec)
+    with TestClient(create_app(registry(engines, "maia-1500"))) as client:
         yield client

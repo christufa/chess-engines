@@ -1,7 +1,7 @@
 [project]
 name = "chess-engines"
 version = "0.1.0"
-description = "Shared chess-engine analysis service: UCI engines (Stockfish) over HTTP"
+description = "Shared chess-engine analysis service: UCI engines (Stockfish, Maia on Lc0) over HTTP"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -47,4 +47,4 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["engine: needs a real Stockfish binary (STOCKFISH_PATH)"]
+markers = ["engine: needs a real engine (STOCKFISH_PATH, or LC0_PATH and MAIA_DIR)"]

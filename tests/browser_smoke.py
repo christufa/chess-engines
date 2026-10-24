@@ -39,6 +39,24 @@ with sync_playwright() as p:
     expect(lines.locator("li")).to_have_count(3, timeout=30_000)
     assert "%20b%20" in page.url, "the URL carries the new position (Black to move)"
 
+    # Maia as the analysis engine: lines show how likely a 1500 player is to play each move.
+    page.goto(base)
+    expect(lines.locator("li")).to_have_count(3, timeout=30_000)
+    page.get_by_label("Engine", exact=True).select_option("maia-1500")
+    expect(lines.locator("li").first).to_contain_text("%", timeout=30_000)
+    expect(page.get_by_text("Maia 1500").first).to_be_visible()
+
+    # Play against Maia while Stockfish analyses: White plays e4 and Maia answers as Black.
+    page.get_by_label("Engine", exact=True).select_option("stockfish")
+    page.get_by_label("Play against the engine").select_option("black")
+    page.get_by_label("Opponent").select_option("maia-1500")
+    page.locator('[data-square="e2"]').click()
+    page.locator('[data-square="e4"]').click()
+    expect(page.get_by_label("Moves")).to_contain_text("1. e4", timeout=15_000)
+    expect(page.get_by_label("Moves").get_by_role("button")).to_have_count(2, timeout=30_000)
+    assert "%20w%20" in page.url, "Maia replied, so it is White to move again"
+    page.get_by_label("Play against the engine").select_option("off")
+
     # A shared link with a mated position: no engine call, just the outcome.
     page.goto(base + "/#fen=7k%2F6Q1%2F6K1%2F8%2F8%2F8%2F8%2F8%20b%20-%20-%200%201")
     page.reload()
@@ -56,5 +74,5 @@ with sync_playwright() as p:
 
     assert not errors, errors
     browser.close()
-    print("Browser smoke passed: analysis on load, playing an engine move, a mated position, mobile width, "
-          "no page errors or CSP violations")
+    print("Browser smoke passed: analysis on load, playing an engine move, Maia lines and play, a mated "
+          "position, mobile width, no page errors or CSP violations")

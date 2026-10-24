@@ -6,10 +6,13 @@ image: ""
 engines: null
 
 # Engine processes are CPU-bound: one core each at Threads=1. The image's registry runs
-# 2 processes per pod; the request is one core, so a pod can burst to two on an idle node.
+# 2 Stockfish processes per pod; the request is one core, so a pod can burst to two on an
+# idle node. The nine Maia processes (Lc0) take about 15 MiB each and milliseconds per
+# request. With everything loaded a pod uses about 400 MiB, most of it Stockfish's hash
+# and network.
 resources:
-  requests: { cpu: "1", memory: 512Mi }
-  limits: { memory: 1Gi }
+  requests: { cpu: "1", memory: 768Mi }
+  limits: { memory: 1536Mi }
 
 # Where the pods run. spot: true adds the openings cluster's spot pool to both (nodeSelector
 # workload=batch and the spot taint's toleration); false leaves placement to nodeSelector

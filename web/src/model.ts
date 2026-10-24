@@ -1,7 +1,7 @@
 // Pure helpers for the playground: formatting scores, the eval bar, and turning engine
 // lines into move text and board arrows. No React here, so it is unit-tested directly.
 import { Chess } from "chess.js";
-import type { Line, Score } from "./api";
+import type { AnalyseRequest, Engine, Line, Score } from "./api";
 
 export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -11,6 +11,32 @@ export function formatScore(score: Score): string {
   const pawns = (score.cp ?? 0) / 100;
   if (pawns === 0) return "0.00";
   return (pawns > 0 ? "+" : "") + pawns.toFixed(2);
+}
+
+/** "18%", "0.4%", "<0.1%": how likely a human is to play a move (Maia). */
+export function formatProbability(p: number): string {
+  const percent = p * 100;
+  if (percent >= 9.95) return `${Math.round(percent)}%`;
+  if (percent >= 0.1) return `${percent.toFixed(1)}%`;
+  return "<0.1%";
+}
+
+/** The search part of a request: the chosen depth or time where the engine accepts it,
+ *  clamped to its bounds; nothing (the engine's own default, e.g. Maia's one node) where
+ *  it doesn't. */
+export function searchFor(
+  engine: Engine | undefined,
+  choice: { limit: "depth" | "movetime"; depth: number; movetimeMs: number },
+): Pick<AnalyseRequest, "depth" | "movetime_ms"> {
+  const limits = engine?.limits;
+  if (!limits) return choice.limit === "depth" ? { depth: choice.depth } : { movetime_ms: choice.movetimeMs };
+  if (choice.limit === "depth" && limits.searches.includes("depth")) {
+    return { depth: Math.min(choice.depth, limits.max_depth) };
+  }
+  if (choice.limit === "movetime" && limits.searches.includes("movetime")) {
+    return { movetime_ms: Math.min(choice.movetimeMs, limits.max_movetime_ms) };
+  }
+  return {};
 }
 
 /** White's share of the eval bar, 0-100. Mates fill it; centipawns follow lichess's curve. */

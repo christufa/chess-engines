@@ -3,7 +3,7 @@
     "schemas": {
       "AnalyseRequest": {
         "additionalProperties": false,
-        "description": "Analyse one position. Give `depth` or `movetime_ms`, not both; neither means the\nengine's default depth. Upper bounds are per engine (`GET /v1/engines`).",
+        "description": "Analyse one position. Give at most one of `depth`, `movetime_ms` and `nodes`; none\nmeans the engine's default search. Which kinds an engine accepts, and their upper\nbounds, are per engine (`GET /v1/engines`).",
         "examples": [
           {
             "depth": 18,
@@ -63,6 +63,19 @@
             "minimum": 1.0,
             "title": "Multipv",
             "type": "integer"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Search this many nodes",
+            "title": "Nodes"
           }
         },
         "required": [
@@ -174,6 +187,11 @@
             "title": "Options",
             "type": "object"
           },
+          "title": {
+            "description": "For people, e.g. 'Maia 1500'; defaults to the name",
+            "title": "Title",
+            "type": "string"
+          },
           "version": {
             "description": "Pinned release in this image",
             "title": "Version",
@@ -188,6 +206,7 @@
           "name",
           "version",
           "id",
+          "title",
           "default",
           "workers",
           "options",
@@ -228,6 +247,19 @@
             "title": "Default Depth",
             "type": "integer"
           },
+          "default_nodes": {
+            "title": "Default Nodes",
+            "type": "integer"
+          },
+          "default_search": {
+            "description": "Used when a request gives no limit",
+            "enum": [
+              "depth",
+              "nodes"
+            ],
+            "title": "Default Search",
+            "type": "string"
+          },
           "max_depth": {
             "title": "Max Depth",
             "type": "integer"
@@ -239,12 +271,33 @@
           "max_multipv": {
             "title": "Max Multipv",
             "type": "integer"
+          },
+          "max_nodes": {
+            "title": "Max Nodes",
+            "type": "integer"
+          },
+          "searches": {
+            "description": "The kinds of search this engine accepts",
+            "items": {
+              "enum": [
+                "depth",
+                "movetime",
+                "nodes"
+              ],
+              "type": "string"
+            },
+            "title": "Searches",
+            "type": "array"
           }
         },
         "required": [
+          "searches",
+          "default_search",
           "default_depth",
           "max_depth",
           "max_movetime_ms",
+          "default_nodes",
+          "max_nodes",
           "max_multipv"
         ],
         "title": "EngineLimits",
@@ -282,6 +335,20 @@
               }
             ],
             "title": "Nodes"
+          },
+          "probability": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The network's probability for this move (Lc0 engines such as Maia: how likely a player at that level is to play it); null for engines that don't report one",
+            "title": "Probability"
           },
           "pv": {
             "description": "Principal variation in UCI, starting with this move",
@@ -359,7 +426,7 @@
             "type": "integer"
           },
           "utilization": {
-            "description": "(searching + queued) / engine processes",
+            "description": "The busiest engine's (searching + queued) / its processes",
             "title": "Utilization",
             "type": "number"
           },
@@ -444,6 +511,17 @@
               }
             ],
             "title": "Movetime Ms"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodes"
           }
         },
         "title": "SearchLimitOut",
@@ -452,7 +530,7 @@
     }
   },
   "info": {
-    "description": "Shared chess-engine analysis: UCI engines (Stockfish) over HTTP.",
+    "description": "Shared chess-engine analysis: UCI engines (Stockfish, and Maia on Lc0) over HTTP.",
     "title": "chess-engines",
     "version": "0.1.0"
   },
@@ -596,7 +674,7 @@
     },
     "/v1/load": {
       "get": {
-        "description": "This pod's load (KEDA polls it to scale).",
+        "description": "This pod's load (KEDA polls it to scale).\n\nUtilization is the busiest engine's, so idle engines (nine Maia levels, say) don't\nhide a queue forming in front of Stockfish.",
         "operationId": "load_v1_load_get",
         "responses": {
           "200": {

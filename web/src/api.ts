@@ -16,26 +16,40 @@ export interface Line {
   nodes: number | null;
   pv: string[];
   pv_san: string[];
+  /** Lc0 engines such as Maia: how likely a player at that level is to play the move. */
+  probability: number | null;
 }
 
 export interface Analysis {
   fen: string;
   turn: "white" | "black";
   engine: { name: string; version: string; id: string };
-  limit: { depth: number | null; movetime_ms: number | null };
+  limit: { depth: number | null; movetime_ms: number | null; nodes: number | null };
   multipv: number;
   outcome: "checkmate" | "stalemate" | null;
   lines: Line[];
   time_ms: number;
 }
 
+export type Search = "depth" | "movetime" | "nodes";
+
 export interface Engine {
   name: string;
+  title: string;
   version: string;
   id: string;
   default: boolean;
   workers: number;
-  limits: { default_depth: number; max_depth: number; max_movetime_ms: number; max_multipv: number };
+  limits: {
+    searches: Search[];
+    default_search: "depth" | "nodes";
+    default_depth: number;
+    max_depth: number;
+    max_movetime_ms: number;
+    default_nodes: number;
+    max_nodes: number;
+    max_multipv: number;
+  };
 }
 
 export interface AnalyseRequest {
@@ -43,6 +57,7 @@ export interface AnalyseRequest {
   engine: string;
   depth?: number;
   movetime_ms?: number;
+  nodes?: number;
   multipv: number;
 }
 

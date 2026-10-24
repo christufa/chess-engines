@@ -57,9 +57,15 @@ def test_multipv_beyond_legal_moves(stockfish_client):
 
 def test_movetime(stockfish_client):
     body = analyse(stockfish_client, fen=START, movetime_ms=300, multipv=2)
-    assert body["limit"] == {"depth": None, "movetime_ms": 300}
+    assert body["limit"] == {"depth": None, "movetime_ms": 300, "nodes": None}
     assert len(body["lines"]) == 2
     assert body["time_ms"] < 5000
+
+
+def test_nodes(stockfish_client):
+    body = analyse(stockfish_client, fen=START, nodes=20_000)
+    assert body["limit"] == {"depth": None, "movetime_ms": None, "nodes": 20_000}
+    assert 0 < body["lines"][0]["nodes"] <= 25_000  # Stockfish stops close to the budget
 
 
 def test_deterministic_at_fixed_depth(stockfish_client):

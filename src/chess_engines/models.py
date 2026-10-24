@@ -8,8 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class AnalyseRequest(BaseModel):
-    """Analyse one position. Give `depth` or `movetime_ms`, not both; neither means the
-    engine's default depth. Upper bounds are per engine (`GET /v1/engines`)."""
+    """Analyse one position. Give at most one of `depth`, `movetime_ms` and `nodes`; none
+    means the engine's default search. Which kinds an engine accepts, and their upper
+    bounds, are per engine (`GET /v1/engines`)."""
 
     model_config = ConfigDict(
         extra="forbid",
@@ -25,12 +26,13 @@ class AnalyseRequest(BaseModel):
     engine: str | None = Field(None, description="Registered engine name; omitted means the default engine")
     depth: int | None = Field(None, ge=1, description="Search to this depth")
     movetime_ms: int | None = Field(None, ge=10, description="Search for this long")
+    nodes: int | None = Field(None, ge=1, description="Search this many nodes")
     multipv: int = Field(1, ge=1, description="Number of best lines to return")
 
     @model_validator(mode="after")
     def _one_limit(self) -> AnalyseRequest:
-        if self.depth is not None and self.movetime_ms is not None:
-            raise ValueError("give depth or movetime_ms, not both")
+        if sum(x is not None for x in (self.depth, self.movetime_ms, self.nodes)) > 1:
+            raise ValueError("give at most one of depth, movetime_ms and nodes")
         return self
 
 
@@ -53,6 +55,10 @@ class Line(BaseModel):
     nodes: int | None = None
     pv: list[str] = Field(description="Principal variation in UCI, starting with this move")
     pv_san: list[str] = Field(description="The same variation in SAN")
+    probability: float | None = Field(
+        None, ge=0, le=1,
+        description="The network's probability for this move (Lc0 engines such as Maia: how likely a "
+                    "player at that level is to play it); null for engines that don't report one")
 
 
 class EngineInfo(BaseModel):
@@ -64,6 +70,7 @@ class EngineInfo(BaseModel):
 class SearchLimitOut(BaseModel):
     depth: int | None = None
     movetime_ms: int | None = None
+    nodes: int | None = None
 
 
 class AnalyseResponse(BaseModel):
@@ -79,13 +86,19 @@ class AnalyseResponse(BaseModel):
 
 
 class EngineLimits(BaseModel):
+    searches: list[Literal["depth", "movetime", "nodes"]] = Field(
+        description="The kinds of search this engine accepts")
+    default_search: Literal["depth", "nodes"] = Field(description="Used when a request gives no limit")
     default_depth: int
     max_depth: int
     max_movetime_ms: int
+    default_nodes: int
+    max_nodes: int
     max_multipv: int
 
 
 class EngineEntry(EngineInfo):
+    title: str = Field(description="For people, e.g. 'Maia 1500'; defaults to the name")
     default: bool
     workers: int
     options: dict[str, int | str | bool]
@@ -99,7 +112,8 @@ class EnginesResponse(BaseModel):
 class Load(BaseModel):
     """This pod's load, for KEDA's metrics-api scaler."""
 
-    utilization: float = Field(description="(searching + queued) / engine processes")
+    utilization: float = Field(
+        description="The busiest engine's (searching + queued) / its processes")
     in_flight: int
     queued: int
     workers: int

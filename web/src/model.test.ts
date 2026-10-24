@@ -1,10 +1,49 @@
 import { describe, expect, it } from "vitest";
-import type { Line } from "./api";
-import { formatScore, lineArrows, numberMoves, positions, sanMoves, START_FEN, validFen, whitePercent } from "./model";
+import type { Engine, Line } from "./api";
+import {
+  formatProbability,
+  formatScore,
+  lineArrows,
+  numberMoves,
+  positions,
+  sanMoves,
+  searchFor,
+  START_FEN,
+  validFen,
+  whitePercent,
+} from "./model";
 
 const line = (uci: string, cp: number): Line => ({
   rank: 1, uci, san: "", score: { cp, mate: null }, white_score: { cp, mate: null },
-  depth: 10, seldepth: 12, nodes: 1000, pv: [uci], pv_san: [""],
+  depth: 10, seldepth: 12, nodes: 1000, pv: [uci], pv_san: [""], probability: null,
+});
+
+const engine = (searches: Engine["limits"]["searches"]): Engine => ({
+  name: "e", title: "E", version: "1", id: "E 1", default: true, workers: 1,
+  limits: {
+    searches, default_search: searches.includes("depth") ? "depth" : "nodes", default_depth: 18,
+    max_depth: 20, max_movetime_ms: 2000, default_nodes: 1, max_nodes: 1, max_multipv: 5,
+  },
+});
+
+describe("formatProbability", () => {
+  it("rounds to what a person can read", () => {
+    expect(formatProbability(0.1824)).toBe("18%");
+    expect(formatProbability(0.0688)).toBe("6.9%");
+    expect(formatProbability(0.004)).toBe("0.4%");
+    expect(formatProbability(0.0004)).toBe("<0.1%");
+  });
+});
+
+describe("searchFor", () => {
+  const choice = { limit: "depth" as const, depth: 25, movetimeMs: 5000 };
+  it("clamps the chosen search to the engine's bounds", () => {
+    expect(searchFor(engine(["depth", "movetime", "nodes"]), choice)).toEqual({ depth: 20 });
+    expect(searchFor(engine(["depth", "movetime"]), { ...choice, limit: "movetime" })).toEqual({ movetime_ms: 2000 });
+  });
+  it("leaves the search to a one-node engine such as Maia", () => {
+    expect(searchFor(engine(["nodes"]), choice)).toEqual({});
+  });
 });
 
 describe("formatScore", () => {

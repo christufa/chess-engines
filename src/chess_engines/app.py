@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,7 +29,7 @@ from .models import (
     Score,
     SearchLimitOut,
 )
-from .pool import EngineHung, EnginePool, QueueFull, QueueTimeout, SearchLimit
+from .pool import EngineHung, EnginePool, QueueFull, QueueTimeout, SearchLimit, SearchResult
 from .registry import Registry, load_registry
 
 log = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ def create_app(registry: Registry | None = None) -> FastAPI:
     app = FastAPI(
         title="chess-engines",
         version=__version__,
-        description="Shared chess-engine analysis: UCI engines (Stockfish) over HTTP.",
+        description="Shared chess-engine analysis: UCI engines (Stockfish, and Maia on Lc0) over HTTP.",
         lifespan=lifespan,
     )
 
@@ -95,7 +96,8 @@ def create_app(registry: Registry | None = None) -> FastAPI:
         reg: Registry = request.app.state.registry
         return EnginesResponse(engines=[
             EngineEntry(
-                name=spec.name, version=spec.version, id=pools(request)[spec.name].engine_id,
+                name=spec.name, title=spec.title or spec.name, version=spec.version,
+                id=pools(request)[spec.name].engine_id,
                 default=spec.name == reg.default_engine, workers=spec.workers, options=spec.options,
                 limits=EngineLimits(**spec.limits.model_dump(include=set(EngineLimits.model_fields))),
             )
@@ -104,12 +106,14 @@ def create_app(registry: Registry | None = None) -> FastAPI:
 
     @app.get("/v1/load", response_model=Load, tags=["health"])
     async def load(request: Request) -> Load:
-        """This pod's load (KEDA polls it to scale)."""
-        in_flight = sum(p.in_flight for p in pools(request).values())
-        queued = sum(p.waiting for p in pools(request).values())
-        workers = sum(len(p.workers) for p in pools(request).values())
-        return Load(utilization=round((in_flight + queued) / workers, 3), in_flight=in_flight,
-                    queued=queued, workers=workers)
+        """This pod's load (KEDA polls it to scale).
+
+        Utilization is the busiest engine's, so idle engines (nine Maia levels, say) don't
+        hide a queue forming in front of Stockfish."""
+        all_pools = pools(request).values()
+        utilization = max((p.in_flight + p.waiting) / len(p.workers) for p in all_pools)
+        return Load(utilization=round(utilization, 3), in_flight=sum(p.in_flight for p in all_pools),
+                    queued=sum(p.waiting for p in all_pools), workers=sum(len(p.workers) for p in all_pools))
 
     @app.post("/v1/analyse", response_model=AnalyseResponse, response_model_exclude_none=False,
               responses=ERRORS, tags=["analysis"])
@@ -123,21 +127,31 @@ def create_app(registry: Registry | None = None) -> FastAPI:
         lim = spec.limits
 
         board = parse_fen(body.fen)
+        asked = {"depth": body.depth, "movetime": body.movetime_ms, "nodes": body.nodes}
+        for kind, value in asked.items():
+            if value is not None and kind not in lim.searches:
+                raise HTTPException(422, f"{name} accepts only {', '.join(lim.searches)} searches")
         if body.depth is not None and body.depth > lim.max_depth:
             raise HTTPException(422, f"depth must be at most {lim.max_depth} for {name}")
         if body.movetime_ms is not None and body.movetime_ms > lim.max_movetime_ms:
             raise HTTPException(422, f"movetime_ms must be at most {lim.max_movetime_ms} for {name}")
+        if body.nodes is not None and body.nodes > lim.max_nodes:
+            raise HTTPException(422, f"nodes must be at most {lim.max_nodes} for {name}")
         if body.multipv > lim.max_multipv:
             raise HTTPException(422, f"multipv must be at most {lim.max_multipv} for {name}")
-        limit = SearchLimit(depth=body.depth, movetime_ms=body.movetime_ms)
-        if limit.depth is None and limit.movetime_ms is None:
-            limit.depth = lim.default_depth
+        limit = SearchLimit(depth=body.depth, movetime_ms=body.movetime_ms, nodes=body.nodes)
+        if all(value is None for value in asked.values()):
+            if lim.default_search == "nodes":
+                limit.nodes = lim.default_nodes
+            else:
+                limit.depth = lim.default_depth
 
         pool = pools(request)[name]
         info = EngineInfo(name=name, version=spec.version, id=pool.engine_id)
         response = dict(
             fen=board.fen(), turn="white" if board.turn else "black", engine=info,
-            limit=SearchLimitOut(depth=limit.depth, movetime_ms=limit.movetime_ms), multipv=body.multipv,
+            limit=SearchLimitOut(depth=limit.depth, movetime_ms=limit.movetime_ms, nodes=limit.nodes),
+            multipv=body.multipv,
         )
         if not any(board.legal_moves):
             outcome = "checkmate" if board.is_check() else "stalemate"
@@ -145,14 +159,14 @@ def create_app(registry: Registry | None = None) -> FastAPI:
 
         started = time.monotonic()
         try:
-            infos = await pool.analyse(board, limit, body.multipv)
+            result = await pool.analyse(board, limit, body.multipv)
         except (QueueFull, QueueTimeout) as exc:
             raise HTTPException(503, f"{name} is busy; retry later", headers={"Retry-After": "5"}) from exc
         except EngineHung as exc:
             raise HTTPException(504, f"{name} did not answer in time and is being restarted; retry",
                                 headers={"Retry-After": "5"}) from exc
         elapsed = int((time.monotonic() - started) * 1000)
-        return AnalyseResponse(**response, lines=to_lines(board, infos), time_ms=elapsed)
+        return AnalyseResponse(**response, lines=to_lines(board, result), time_ms=elapsed)
 
     if WEB_DIR.is_dir():
         @app.middleware("http")
@@ -190,9 +204,34 @@ def to_score(pov: chess.engine.PovScore | None, color: chess.Color) -> Score:
     return Score(cp=score.score())
 
 
-def to_lines(board: chess.Board, infos: list[chess.engine.InfoDict]) -> list[Line]:
+# Lc0's VerboseMoveStats, one `info string` per move, e.g.
+#   "e7e5  (322 ) N:       0 (+ 0) (P: 33.48%) (WL:  -.-----) ..."
+# P is the policy network's probability for the move; for Maia, how likely a player at its
+# level is to play it.
+LC0_MOVE_STAT = re.compile(
+    r"^(?P<move>[a-h][1-8][a-h][1-8][qrbn]?)\s+\(\s*\d+\s*\).*?\(P:\s*(?P<p>[\d.]+)%\)")
+
+
+def move_probabilities(board: chess.Board, strings: list[str]) -> dict[str, float]:
+    """UCI move -> policy probability, from Lc0's per-move stats; empty for other engines."""
+    probabilities = {}
+    for string in strings:
+        match = LC0_MOVE_STAT.match(string)
+        if not match:
+            continue
+        try:
+            # parse_uci also turns Lc0's king-takes-rook castling (e1h1) into e1g1.
+            move = board.parse_uci(match["move"])
+        except ValueError:
+            continue
+        probabilities[move.uci()] = round(float(match["p"]) / 100, 4)
+    return probabilities
+
+
+def to_lines(board: chess.Board, result: SearchResult) -> list[Line]:
+    probabilities = move_probabilities(board, result.strings)
     lines = []
-    for rank, info in enumerate(infos, start=1):
+    for rank, info in enumerate(result.infos, start=1):
         pv = info.get("pv") or []
         if not pv or "score" not in info:
             continue  # nothing usable (a search stopped before its first iteration)
@@ -205,6 +244,6 @@ def to_lines(board: chess.Board, infos: list[chess.engine.InfoDict]) -> list[Lin
             rank=rank, uci=pv[0].uci(), san=pv_san[0],
             score=to_score(info["score"], board.turn), white_score=to_score(info["score"], chess.WHITE),
             depth=info.get("depth", 0), seldepth=info.get("seldepth"), nodes=info.get("nodes"),
-            pv=[m.uci() for m in pv], pv_san=pv_san,
+            pv=[m.uci() for m in pv], pv_san=pv_san, probability=probabilities.get(pv[0].uci()),
         ))
     return lines

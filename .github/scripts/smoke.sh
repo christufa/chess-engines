@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the image as the cluster does and analyse the starting position with real Stockfish.
+# Run the image as the cluster does and analyse with real Stockfish and Maia (on Lc0).
 # Used by containers.yml (PRs) and images.yml (main, before publishing).   smoke.sh <image>
 set -euo pipefail
 image=${1:?usage: smoke.sh <image>}
@@ -23,6 +23,13 @@ echo "$body" | jq -e '(.lines | length) == 3 and .lines[0].depth >= 14 and
 curl -fsS -X POST 127.0.0.1:8000/v1/analyse -H 'content-type: application/json' \
   -d '{"fen": "3r2k1/5ppp/8/8/8/8/5PPP/6K1 b - - 0 1", "depth": 8}' \
   | jq -e '.lines[0].san == "Rd1#" and .lines[0].score.mate == 1 and .lines[0].white_score.mate == -1'
+
+# Maia: every level registered, and a human-like reply to 1.e4 with move probabilities.
+curl -fsS 127.0.0.1:8000/v1/engines \
+  | jq -e '[.engines[] | select(.name | startswith("maia-"))] | length == 9 and all(.id | startswith("Lc0"))'
+curl -fsS -X POST 127.0.0.1:8000/v1/analyse -H 'content-type: application/json' \
+  -d '{"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1", "engine": "maia-1500", "multipv": 3}' \
+  | jq -e '.limit.nodes == 1 and (.lines | length) == 3 and all(.lines[]; .probability > 0)'
 
 # A bad FEN is a 422, not a 500.
 test "$(curl -s -o /dev/null -w '%{http_code}' -X POST 127.0.0.1:8000/v1/analyse \
